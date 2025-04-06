@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barbie Book Catcher</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #f8e1f4;
+        }
+        #canvas {
+            border: 2px solid #ff69b4;
+        }
+        #status {
+            position: absolute;
+            top: 50%;
+            width: 100%;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Downloading...</div>
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="1"></canvas>
+    <script>
+        var statusElement = document.getElementById('status');
+        var canvas = document.getElementById('canvas');
+        
+        canvas.addEventListener("webglcontextlost", function(e) { 
+            alert('WebGL context lost. You will need to reload the page.'); 
+            e.preventDefault(); 
+        }, false);
+    </script>
+    <script src="main.js"></script>
+</body>
+</html>
+

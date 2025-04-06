@@ -17,7 +17,7 @@ A fun and engaging Pygame-based game where Barbie catches falling books while av
 - Complete each level to see Barbie's victory ramp walk!
 
 ## Play Now
-[Play Barbie Book Catcher] barbie-book-catcher.vercel.app
+https://barbie-book-catcher.vercel.app/
 
 
 Created by Rachana

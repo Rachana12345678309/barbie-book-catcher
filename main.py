@@ -3,284 +3,329 @@ import random
 import asyncio
 import math
 
-# Initialize Pygame
+# Initialize Pygame with minimal settings
 pygame.init()
 
-# Set up the display
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Barbie Book Catcher")
+# Constants
+WINDOW_WIDTH = 400
+WINDOW_HEIGHT = 600
+BARBIE_SIZE = (50, 70)
+BOOK_SIZE = (40, 30)
+WITCH_SIZE = (40, 40)
+BOULDER_SIZE = 40
+GROUND_HEIGHT = 50
 
 # Colors
 WHITE = (255, 255, 255)
 PINK = (255, 192, 203)
-BROWN = (139, 69, 19)
 BLACK = (0, 0, 0)
-BLONDE = (255, 223, 196)
-RED = (255, 0, 0)
-GRAY = (128, 128, 128)
+PURPLE = (128, 0, 128)
+BROWN = (139, 69, 19)
+GOLD = (255, 215, 0)
+LIGHT_PINK = (255, 223, 228)
+
+# Create window
+screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+pygame.display.set_caption("Barbie Book Catcher")
+
+# Fast image loading
+def load_image(path, size):
+    try:
+        img = pygame.image.load(path)
+        return pygame.transform.scale(img, size)
+    except:
+        surf = pygame.Surface(size)
+        surf.fill(PINK)
+        return surf
+
+# Load images immediately
+barbie_head = load_image("barbie_head.png", BARBIE_SIZE)
+witch_image = load_image("witch.png", WITCH_SIZE)
+book_vertical = load_image("book_vertical.png", BOOK_SIZE)
+book_horizontal = load_image("book_horizontal.png", BOOK_SIZE)
 
 # Game variables
-barbie_width = 60
-barbie_height = 100
-barbie_x = SCREEN_WIDTH // 2 - barbie_width // 2
-barbie_y = SCREEN_HEIGHT - barbie_height - 10
-barbie_speed = 5
-barbie_jump = False
-jump_height = 100
-jump_speed = 10
-original_y = SCREEN_HEIGHT - barbie_height - 10
-
-# Book variables
-book_width = 40
-book_height = 60
-book_speed = 2
-caught_books = []
-
-# Boulder variables
-boulder_size = 40
-boulder_speed = 4
-boulders = []
-
-# Game state
+barbie_x = WINDOW_WIDTH // 2
+barbie_y = WINDOW_HEIGHT - GROUND_HEIGHT - BARBIE_SIZE[1]
+velocity_y = 0
+gravity = 0.8
+jump_count = 2
 score = 0
 level = 1
-books_caught = 0
-books_needed = 5
-game_over = False
-show_rules = True
-showing_ramp_walk = False
+game_state = "rules"
+base_speed = 4
 
-# Font
-font = pygame.font.SysFont(None, 36)
+# Game objects
+books = []
+witches = []
+boulders = []
+stacked_books = []
 
-def draw_text(text, color, x, y):
-    text_surface = font.render(text, True, color)
-    screen.blit(text_surface, (x, y))
+# Mobile controls
+BUTTON_SIZE = 60
+LEFT_BUTTON = pygame.Rect(10, WINDOW_HEIGHT - 90, BUTTON_SIZE, BUTTON_SIZE)
+RIGHT_BUTTON = pygame.Rect(80, WINDOW_HEIGHT - 90, BUTTON_SIZE, BUTTON_SIZE)
+JUMP_BUTTON = pygame.Rect(WINDOW_WIDTH - 70, WINDOW_HEIGHT - 90, BUTTON_SIZE, BUTTON_SIZE)
 
 def draw_rules():
-    screen.fill(WHITE)
-    draw_text("Barbie Book Catcher - Rules", PINK, 200, 50)
+    screen.fill(LIGHT_PINK)
+    
+    # Draw title
+    title_font = pygame.font.Font(None, 48)
+    title = title_font.render("Barbie Book Catcher", True, PURPLE)
+    screen.blit(title, (WINDOW_WIDTH//2 - title.get_width()//2, 50))
+
+    # Draw Barbie and books illustration
+    screen.blit(barbie_head, (WINDOW_WIDTH//2 - BARBIE_SIZE[0]//2, 100))
+    screen.blit(book_horizontal, (WINDOW_WIDTH//2 - BOOK_SIZE[0]//2, 90))
+    screen.blit(witch_image, (WINDOW_WIDTH//2 + 80, 100))
+
+    # Draw rules
+    font = pygame.font.Font(None, 32)
     rules = [
-        "1. Catch falling books to score points",
-        "2. Each caught book = 3 points",
-        "3. Missing a book = -5 points",
-        "4. Catch 5 books to complete each level",
-        "5. Jump over boulders (UP arrow)",
-        "6. Score < 0 = Game Over",
+        "How to Play:",
         "",
-        "Press SPACE to start!"
+        "→ Stack 5 books to complete level",
+        "→ Use arrows or buttons to move",
+        "→ Double jump to avoid boulders",
+        "→ Avoid the witches!",
+        "→ Books stack automatically",
+        "→ Speed increases each level",
+        "",
+        "Tap or Click to Start!"
     ]
-    for i, rule in enumerate(rules):
-        draw_text(rule, BLACK, 200, 150 + i*40)
 
-def draw_barbie(x, y):
-    # Draw dress
-    pygame.draw.polygon(screen, PINK, [
-        (x + barbie_width//2, y + 40),
-        (x + barbie_width + 10, y + barbie_height),
-        (x - 10, y + barbie_height)
-    ])
-    # Draw hair
-    pygame.draw.ellipse(screen, BLONDE, (x - 5, y, barbie_width + 10, 50))
-    # Draw hair locks
-    for i in range(4):
-        wave_x = x + i * 15
-        offset = 5 * math.sin(i * 0.8)
-        pygame.draw.line(screen, BLONDE, 
-                        (wave_x + offset, y + 20),
-                        (wave_x + 10, y + 50), 4)
+    y_pos = 220
+    for rule in rules:
+        if rule.startswith("→"):
+            color = PURPLE
+        else:
+            color = BLACK
+        text = font.render(rule, True, color)
+        screen.blit(text, (WINDOW_WIDTH//2 - text.get_width()//2, y_pos))
+        y_pos += 35
 
-def draw_book(x, y, horizontal=False):
-    if horizontal:
-        pygame.draw.rect(screen, BROWN, (x, y, 40, 15))
-    else:
-        pygame.draw.rect(screen, BROWN, (x, y, book_width, book_height))
+    # Draw decorative elements
+    pygame.draw.rect(screen, GOLD, (20, 40, WINDOW_WIDTH-40, 3))
+    pygame.draw.rect(screen, GOLD, (20, WINDOW_HEIGHT-40, WINDOW_WIDTH-40, 3))
 
-def draw_boulder(x, y):
-    pygame.draw.circle(screen, GRAY, (x + boulder_size//2, y + boulder_size//2), boulder_size//2)
+def reset_game():
+    global barbie_x, barbie_y, velocity_y, jump_count, score, books, witches, boulders, stacked_books
+    barbie_x = WINDOW_WIDTH // 2
+    barbie_y = WINDOW_HEIGHT - GROUND_HEIGHT - BARBIE_SIZE[1]
+    velocity_y = 0
+    jump_count = 2
+    score = 0
+    books.clear()
+    witches.clear()
+    boulders.clear()
+    stacked_books.clear()
 
-async def show_ramp_walk():
-    global showing_ramp_walk
-    showing_ramp_walk = True
-    scale = 0.5  # Start small (far away)
-    progress = 0
-    
-    for frame in range(180):  # 3 seconds
-        screen.fill(WHITE)
-        
-        # Draw runway
-        pygame.draw.rect(screen, BLACK, (0, SCREEN_HEIGHT - 50, SCREEN_WIDTH, 20))
-        
-        # Calculate snake path
-        progress += 0.02
-        walk_x = SCREEN_WIDTH//2 + math.sin(progress * 6) * 100
-        walk_y = SCREEN_HEIGHT//4 + frame * 2
-        
-        # Increase size as Barbie comes closer
-        scale = min(1.5, 0.5 + frame/180)
-        current_width = int(barbie_width * scale)
-        current_height = int(barbie_height * scale)
-        
-        # Draw Barbie
-        draw_barbie(int(walk_x - current_width//2), 
-                   int(walk_y - current_height//2))
-        
-        # Draw stacked books
-        for i in range(len(caught_books)):
-            draw_book(walk_x + current_width//2 - 20, 
-                     walk_y - 20 - (i * 15),
-                     horizontal=True)
-        
-        draw_text(f"Level {level} Complete!", PINK, SCREEN_WIDTH//2 - 150, 50)
-        draw_text(f"Score this level: {score}", PINK, SCREEN_WIDTH//2 - 100, 100)
-        
-        pygame.display.flip()
-        await asyncio.sleep(0.016)
-    
-    showing_ramp_walk = False
+def handle_jump():
+    global velocity_y, jump_count
+    if jump_count > 0:
+        velocity_y = -12
+        jump_count -= 1
+
+def draw_controls():
+    for button, text in [
+        (LEFT_BUTTON, "←"),
+        (RIGHT_BUTTON, "→"),
+        (JUMP_BUTTON, "↑")
+    ]:
+        pygame.draw.rect(screen, PINK, button, border_radius=10)
+        font = pygame.font.Font(None, 40)
+        text = font.render(text, True, BLACK)
+        screen.blit(text, (button.centerx - 10, button.centery - 10))
+
+def check_button(pos):
+    x, y = pos
+    if LEFT_BUTTON.collidepoint(x, y): return "left"
+    if RIGHT_BUTTON.collidepoint(x, y): return "right"
+    if JUMP_BUTTON.collidepoint(x, y): return "jump"
+    return None
+
+def draw_stacked_books(x, y, wobble=False):
+    for i, _ in enumerate(stacked_books):
+        offset = 0
+        if wobble:
+            # Enhanced wobble effect
+            time = pygame.time.get_ticks()
+            offset = math.sin((time + i * 200) * 0.003) * (i + 1) * 2
+            y_offset = math.cos((time + i * 100) * 0.002) * 2
+        else:
+            y_offset = 0
+        screen.blit(book_horizontal, (x + offset, y - (i + 1) * 20 + y_offset))
+
+def get_top_book_height():
+    return barbie_y - (len(stacked_books) * 20) if stacked_books else barbie_y
 
 async def main():
-    global barbie_x, barbie_y, score, level, books_caught, book_speed, caught_books
-    global game_over, show_rules, barbie_jump
-    
+    global barbie_x, barbie_y, velocity_y, jump_count, score, level, game_state
+
+    clock = pygame.time.Clock()
     running = True
     spawn_timer = 0
-    boulder_timer = 0
-    spawn_delay = 1500
-    boulder_delay = 2000
-    falling_books = []
-    boulders = []
-    
+
     while running:
-        current_time = pygame.time.get_ticks()
-        
+        # Event handling
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    if show_rules:
-                        show_rules = False
-                    elif game_over:
-                        game_over = False
-                        score = 0
-                        level = 1
-                        books_caught = 0
-                        book_speed = 2
-                        caught_books = []
-                        falling_books = []
-                        boulders = []
-                        barbie_y = original_y
-                elif event.key == pygame.K_UP and not barbie_jump and not show_rules:
-                    barbie_jump = True
-        
-        screen.fill(WHITE)
-        
-        if show_rules:
-            draw_rules()
-        elif game_over:
-            draw_text("GAME OVER!", RED, SCREEN_WIDTH//2 - 100, SCREEN_HEIGHT//2)
-            draw_text("Press SPACE to play again", BLACK, SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT//2 + 50)
-        else:
-            # Handle keyboard input
+            
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if game_state == "rules":
+                    game_state = "playing"
+                    reset_game()
+                elif game_state == "ramp_walk":
+                    game_state = "playing"
+                    reset_game()
+                else:
+                    button = check_button(event.pos)
+                    if button == "jump":
+                        handle_jump()
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                if game_state in ["rules", "ramp_walk"]:
+                    game_state = "playing"
+                    reset_game()
+                else:
+                    handle_jump()
+
+        # Handle continuous button press
+        mouse_pressed = pygame.mouse.get_pressed()[0]
+        if mouse_pressed:
+            pos = pygame.mouse.get_pos()
+            button = check_button(pos)
+            if button == "left":
+                barbie_x = max(barbie_x - 5, 0)
+            elif button == "right":
+                barbie_x = min(barbie_x + 5, WINDOW_WIDTH - BARBIE_SIZE[0])
+
+        # Game logic
+        if game_state == "playing":
+            # Keyboard controls
             keys = pygame.key.get_pressed()
-            if keys[pygame.K_LEFT] and barbie_x > 0:
-                barbie_x -= barbie_speed
-            if keys[pygame.K_RIGHT] and barbie_x < SCREEN_WIDTH - barbie_width:
-                barbie_x += barbie_speed
-            
-            # Handle jumping
-            if barbie_jump:
-                if barbie_y > original_y - jump_height:
-                    barbie_y -= jump_speed
+            if keys[pygame.K_LEFT]:
+                barbie_x = max(barbie_x - 5, 0)
+            if keys[pygame.K_RIGHT]:
+                barbie_x = min(barbie_x + 5, WINDOW_WIDTH - BARBIE_SIZE[0])
+
+            # Gravity
+            velocity_y += gravity
+            barbie_y += velocity_y
+            if barbie_y > WINDOW_HEIGHT - GROUND_HEIGHT - BARBIE_SIZE[1]:
+                barbie_y = WINDOW_HEIGHT - GROUND_HEIGHT - BARBIE_SIZE[1]
+                velocity_y = 0
+                jump_count = 2
+
+            # Calculate current speed based on level
+            current_speed = base_speed + (level - 1) * 0.5
+
+            # Spawn objects
+            spawn_timer += 1
+            if spawn_timer >= 60:
+                spawn_timer = 0
+                if random.random() < 0.7:
+                    books.append([random.randint(0, WINDOW_WIDTH - BOOK_SIZE[0]), -BOOK_SIZE[1]])
+                if random.random() < 0.3:
+                    witches.append([random.randint(0, WINDOW_WIDTH - WITCH_SIZE[0]), -WITCH_SIZE[1]])
+                if level >= 2 and random.random() < 0.2:
+                    side = random.choice([-1, 1])
+                    x = WINDOW_WIDTH if side == -1 else -BOULDER_SIZE
+                    boulders.append([x, WINDOW_HEIGHT - GROUND_HEIGHT - BOULDER_SIZE, side])
+
+            # Update objects
+            for book in books[:]:
+                book[1] += current_speed
+                if book[1] > WINDOW_HEIGHT:
+                    books.remove(book)
                 else:
-                    barbie_jump = False
-            elif barbie_y < original_y:
-                barbie_y += jump_speed
-                if barbie_y > original_y:
-                    barbie_y = original_y
-            
-            # Spawn books
-            if current_time - spawn_timer > spawn_delay:
-                falling_books.append([random.randint(0, SCREEN_WIDTH - book_width), -book_height])
-                spawn_timer = current_time
-            
-            # Spawn boulders in level 2+
-            if level >= 2 and current_time - boulder_timer > boulder_delay:
-                boulder_x = -boulder_size if random.random() < 0.5 else SCREEN_WIDTH
-                boulders.append([boulder_x, SCREEN_HEIGHT - boulder_size - 20])
-                boulder_timer = current_time
-            
-            # Draw Barbie
-            draw_barbie(barbie_x, barbie_y)
-            
-            # Draw caught books stack
-            for i in range(len(caught_books)):
-                draw_book(barbie_x + barbie_width//2 - 20,
-                         barbie_y - 20 - (i * 15),
-                         horizontal=True)
-            
-            # Update falling books
-            for book in falling_books[:]:
-                book[1] += book_speed
-                draw_book(book[0], book[1])
-                
-                # Check collision
-                if (barbie_x < book[0] + book_width and 
-                    barbie_x + barbie_width > book[0] and 
-                    barbie_y < book[1] + book_height and 
-                    barbie_y + barbie_height > book[1]):
-                    falling_books.remove(book)
-                    score += 3
-                    books_caught += 1
-                    caught_books.append(book)
-                    
-                    # Level up
-                    if books_caught >= books_needed:
-                        await show_ramp_walk()
-                        level += 1
-                        books_caught = 0
-                        score = 0  # Reset score for new level
-                        book_speed += 0.5
-                        caught_books = []
-                        falling_books = []
-                        boulders = []
-                
-                # Remove books that fall off screen
-                elif book[1] > SCREEN_HEIGHT:
-                    falling_books.remove(book)
-                    score -= 5
-                    if score < 0:
-                        game_over = True
-            
-            # Update boulders
+                    # Check collision with top book or Barbie
+                    top_height = get_top_book_height()
+                    if (barbie_x < book[0] + BOOK_SIZE[0] and 
+                        barbie_x + BARBIE_SIZE[0] > book[0] and 
+                        top_height - BOOK_SIZE[1] < book[1] + BOOK_SIZE[1] and 
+                        top_height > book[1]):
+                        books.remove(book)
+                        score += 1
+                        if len(stacked_books) < 5:  # Changed from 10 to 5
+                            stacked_books.append(1)
+
+            for witch in witches[:]:
+                witch[1] += current_speed * 0.75
+                if witch[1] > WINDOW_HEIGHT:
+                    witches.remove(witch)
+                elif (barbie_x < witch[0] + WITCH_SIZE[0] and 
+                      barbie_x + BARBIE_SIZE[0] > witch[0] and 
+                      barbie_y < witch[1] + WITCH_SIZE[1] and 
+                      barbie_y + BARBIE_SIZE[1] > witch[1]):
+                    game_state = "rules"
+                    level = 1
+
             for boulder in boulders[:]:
-                if boulder[0] < SCREEN_WIDTH//2:
-                    boulder[0] += boulder_speed
-                else:
-                    boulder[0] -= boulder_speed
-                draw_boulder(boulder[0], boulder[1])
-                
-                # Check collision with boulder (only if not jumping)
-                if not barbie_jump:
-                    if (barbie_x < boulder[0] + boulder_size and
-                        barbie_x + barbie_width > boulder[0] and
-                        barbie_y + barbie_height > boulder[1]):
-                        game_over = True
-                
-                # Remove boulders that go off screen
-                if (boulder[0] < -boulder_size or 
-                    boulder[0] > SCREEN_WIDTH):
+                boulder[0] += boulder[2] * current_speed
+                if boulder[0] < -BOULDER_SIZE or boulder[0] > WINDOW_WIDTH:
                     boulders.remove(boulder)
+                elif (barbie_x < boulder[0] + BOULDER_SIZE and 
+                      barbie_x + BARBIE_SIZE[0] > boulder[0] and 
+                      barbie_y + BARBIE_SIZE[1] > boulder[1]):
+                    game_state = "rules"
+                    level = 1
+
+            if score >= 5:  # Changed from 10 to 5
+                level += 1
+                game_state = "ramp_walk"
+
+        # Drawing
+        if game_state == "rules":
+            draw_rules()
+
+        elif game_state == "ramp_walk":
+            screen.fill(WHITE)
+            # Draw ramp walk scene with enhanced wobble
+            pygame.draw.rect(screen, GOLD, (50, 300, WINDOW_WIDTH - 100, 20))
+            walk_x = 50 + ((pygame.time.get_ticks() // 20) % (WINDOW_WIDTH - 150))
+            screen.blit(barbie_head, (walk_x, 220))
+            draw_stacked_books(walk_x, 220, wobble=True)
             
+            font = pygame.font.Font(None, 48)
+            text = font.render(f"Level {level-1} Complete!", True, PURPLE)
+            screen.blit(text, (WINDOW_WIDTH//2 - text.get_width()//2, 50))
+            text = font.render("Tap to continue", True, PURPLE)
+            screen.blit(text, (WINDOW_WIDTH//2 - text.get_width()//2, WINDOW_HEIGHT - 100))
+
+        else:
+            # Draw game elements
+            screen.fill(WHITE)
+            pygame.draw.rect(screen, BROWN, (0, WINDOW_HEIGHT - GROUND_HEIGHT, WINDOW_WIDTH, GROUND_HEIGHT))
+            screen.blit(barbie_head, (barbie_x, barbie_y))
+            draw_stacked_books(barbie_x, barbie_y)
+
+            for book in books:
+                screen.blit(book_vertical, (book[0], book[1]))
+            for witch in witches:
+                screen.blit(witch_image, (witch[0], witch[1]))
+            for boulder in boulders:
+                pygame.draw.rect(screen, BLACK, (boulder[0], boulder[1], BOULDER_SIZE, BOULDER_SIZE))
+
             # Draw UI
-            draw_text(f"Score: {score}", BLACK, 10, 10)
-            draw_text(f"Level: {level}", BLACK, 10, 40)
-            draw_text(f"Books: {books_caught}/{books_needed}", BLACK, 10, 70)
-        
+            font = pygame.font.Font(None, 36)
+            score_text = font.render(f"Books: {score}/5", True, BLACK)
+            level_text = font.render(f"Level: {level}", True, BLACK)
+            screen.blit(score_text, (10, 10))
+            screen.blit(level_text, (WINDOW_WIDTH - 100, 10))
+            
+            # Draw jump indicators
+            for i in range(jump_count):
+                pygame.draw.circle(screen, PURPLE, (30 + i*20, 30), 5)
+            
+            draw_controls()
+
         pygame.display.flip()
-        await asyncio.sleep(0.016)
+        await asyncio.sleep(0)
+        clock.tick(30)
+
+    pygame.quit()
 
 asyncio.run(main())
